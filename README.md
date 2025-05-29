@@ -11,6 +11,7 @@
 - server.go 에서 아래 코드를 주석 처리 했는데 service 에 대한 종속성이 발생했는데 이걸 해결 하도록 메서드를 수정할 필요가 있다.  
 - Server() 수정해야함.  
 - lint 추가 해줘야 함.  
+- 사용 설명 작성해주어야 함.    
 
 ```aiignore
     // service.RegisterDataBlockServiceServer(grpcServer)
