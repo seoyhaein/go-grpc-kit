@@ -2,10 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	globallog "github.com/seoyhaein/go-grpc-kit/log"
-	// "github.com/seoyhaein/tori/v1rpc/service"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -13,27 +14,128 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 )
 
-const (
-	defaultMaxRequestBytes   = 1.5 * 1024 * 1024
-	defaultGrpcOverheadBytes = 512 * 1024
-	defaultMaxStreams        = 1<<32 - 1 // math.MaxUint32와 동일
-	defaultMaxSendBytes      = 1<<31 - 1 // math.MaxInt32와 동일
-)
-
-var (
-	Address = ":50052" // default value
-	logger  = globallog.Log
-)
+var logger = globallog.Log
 
 func init() {
 	// TODO: Prometheus 적용 예정
 }
 
-// 값이 없거나 잘못된 경우 defaultVal 을 반환한다.
+type RegisterServices func(*grpc.Server)
+
+// 기본값 상수들
+const (
+	defaultMaxRequestBytes          = 4 << 20 // 예: 4MiB
+	defaultGrpcOverheadBytes        = 1 << 20 // 예: 1MiB
+	defaultMaxSendBytes             = 4 << 20
+	defaultMaxStreams        uint32 = 100
+)
+
+// options 은 functional 옵션을 누적할 구조체
+type options struct {
+	unaryInterceptors  []grpc.UnaryServerInterceptor
+	streamInterceptors []grpc.StreamServerInterceptor
+}
+
+// Option 은 DefaultServerOptions 에 전달할 수 있는 functional 옵션 타입
+type Option func(*options)
+
+// WithUnaryInterceptors 는 추가 Unary 인터셉터를 등록
+func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) Option {
+	return func(o *options) {
+		o.unaryInterceptors = append(o.unaryInterceptors, interceptors...)
+	}
+}
+
+// WithStreamInterceptors 는 추가 Stream 인터셉터를 등록
+func WithStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) Option {
+	return func(o *options) {
+		o.streamInterceptors = append(o.streamInterceptors, interceptors...)
+	}
+}
+
+// DefaultServerOptions 는 functional 옵션들을 받아 grpc.ServerOption 리스트 반환
+func DefaultServerOptions(opts ...Option) []grpc.ServerOption {
+	cfg := &options{
+		unaryInterceptors:  []grpc.UnaryServerInterceptor{loggingInterceptor},
+		streamInterceptors: []grpc.StreamServerInterceptor{streamLoggingInterceptor},
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	maxRecv := getEnvInt("GRPC_MAX_RECV_MSG_SIZE", int(defaultMaxRequestBytes))
+	maxSend := getEnvInt("GRPC_MAX_SEND_MSG_SIZE", defaultMaxSendBytes)
+	maxStreams := getEnvInt("GRPC_MAX_CONCURRENT_STREAMS", int(defaultMaxStreams))
+
+	return []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(cfg.unaryInterceptors...),
+		grpc.ChainStreamInterceptor(cfg.streamInterceptors...),
+		grpc.MaxRecvMsgSize(maxRecv),
+		grpc.MaxSendMsgSize(maxSend),
+		grpc.MaxConcurrentStreams(uint32(maxStreams)),
+	}
+}
+
+// WithTLS 는 TLS 인증서를 grpc 서버에 적용할 수 있는 ServerOption 반환
+func WithTLS(certFile, keyFile string) grpc.ServerOption {
+	creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
+	if err != nil {
+		logger.Fatalf("failed to load TLS credentials: %v", err)
+	}
+	return grpc.Creds(creds)
+}
+
+// WithHealthCheck 는 grpc 서버에 Health Check 서비스를 등록하는 콜백을 반환
+func WithHealthCheck() RegisterServices {
+	return func(grpcServer *grpc.Server) {
+		healthServer := health.NewServer()
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	}
+}
+
+// WithReflection 는 grpc 서버에 Reflection 서비스를 등록하는 콜백을 반환
+func WithReflection() RegisterServices {
+	return func(grpcServer *grpc.Server) {
+		reflection.Register(grpcServer)
+	}
+}
+
+// Server 함수는 서비스 등록 함수(들)을 variadic 인자로 받는다
+func Server(address string, opts []grpc.ServerOption, registerServices ...RegisterServices) error {
+	lis, err := net.Listen("tcp", address)
+	if err != nil {
+
+		return fmt.Errorf("failed to listen on %s: %w", address, err)
+	}
+	// ServerOption 설정
+	grpcServer := grpc.NewServer(opts...)
+
+	// RegisterServices 를 순회하며 각 서비스 등록
+	for _, registerServiceServer := range registerServices {
+		registerServiceServer(grpcServer)
+	}
+	// graceful shutdown 처리 추가
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		sig := <-sigCh
+		logger.Infof("Received signal: %v. Initiating graceful shutdown...", sig)
+		// GracefulStop 은 현재 처리 중인 요청을 모두 완료한 후 서버를 중지함
+		grpcServer.GracefulStop()
+	}()
+	// 서버 시작
+	serveErr := grpcServer.Serve(lis)
+	if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+		return serveErr
+	}
+	return nil
+}
+
+// 값이 없거나 잘못된 경우 defaultVal 을 반환
 func getEnvInt(key string, defaultVal int) int {
 	s := os.Getenv(key)
 	if s == "" {
@@ -41,13 +143,14 @@ func getEnvInt(key string, defaultVal int) int {
 	}
 	val, err := strconv.Atoi(s)
 	if err != nil {
-		logger.Infof("Invalid value for %s: %v. Using default: %d", key, err, defaultVal)
+		logger.Warnf("Invalid value for %s: %v. Using default: %d", key, err, defaultVal)
 		return defaultVal
 	}
 	return val
 }
 
-// gRPC 요청을 받을 때마다 요청 메서드와 에러 정보를 로깅함.
+// gRPC 요청을 받을 때마다 요청 메서드와 에러 정보를 로깅함
+// Unary gRPC 요청 로깅 인터셉터
 func loggingInterceptor(
 	ctx context.Context,
 	req interface{},
@@ -57,73 +160,22 @@ func loggingInterceptor(
 	logger.Infof("Received request for %s", info.FullMethod)
 	resp, err := handler(ctx, req)
 	if err != nil {
-		logger.Infof("Method %s error: %v", info.FullMethod, err)
+		logger.Warnf("Method %s error: %v", info.FullMethod, err)
 	}
 	return resp, err
 }
 
-func Server() error {
-	lis, err := net.Listen("tcp", Address)
+// Stream gRPC 요청 로깅 인터셉터
+func streamLoggingInterceptor(
+	srv interface{},
+	ss grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+) error {
+	logger.Infof("[Stream] Start - %s", info.FullMethod)
+	err := handler(srv, ss)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", Address, err)
+		logger.Warnf("[Stream] Method %s error: %v", info.FullMethod, err)
 	}
-
-	// TLS 설정 예시 (TLS가 필요하면 주석 풀고 사용)
-	/*
-		certFile := "server.crt"
-		keyFile := "server.key"
-		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
-		if err != nil {
-			return fmt.Errorf("failed to load TLS credentials: %w", err)
-		}
-	*/
-
-	// 환경 변수로 옵션 값을 오버라이드할 수 있음
-	maxRecvMsgSize := getEnvInt("GRPC_MAX_RECV_MSG_SIZE", int(defaultMaxRequestBytes+defaultGrpcOverheadBytes))
-	maxSendMsgSize := getEnvInt("GRPC_MAX_SEND_MSG_SIZE", defaultMaxSendBytes)
-	maxConcurrentStreams := getEnvInt("GRPC_MAX_CONCURRENT_STREAMS", defaultMaxStreams)
-
-	// gRPC 서버 옵션 설정
-	opts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(maxRecvMsgSize),
-		grpc.MaxSendMsgSize(maxSendMsgSize),
-		grpc.MaxConcurrentStreams(uint32(maxConcurrentStreams)),
-		grpc.UnaryInterceptor(loggingInterceptor),
-		// grpc.Creds(creds), // TLS 사용 시 활성화
-	}
-
-	grpcServer := grpc.NewServer(opts...)
-
-	// 기존 서비스 등록 (주석 처리된 상태)
-	// 수정: 헬스 체크 서비스 등록
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-
-	// 기존: Reflection 서비스 등록, 디버깅 및 grpcurl 노출 위해서.
-	reflection.Register(grpcServer)
-	// service.RegisterDataBlockServiceServer(grpcServer)
-	// service.RegisterDBApisServiceServer(grpcServer)
-	logger.Infof("gRPC server started, address: %s", Address)
-
-	// graceful shutdown 처리 추가
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		sig := <-sigCh
-		logger.Infof("Received signal: %v. Initiating graceful shutdown...", sig)
-		// GracefulStop 은 현재 처리 중인 요청을 모두 완료한 후 서버를 중지함.
-		grpcServer.GracefulStop()
-	}()
-
-	// 서버 시작
-	serveErr := grpcServer.Serve(lis)
-	if serveErr != nil {
-		if !strings.Contains(serveErr.Error(), "use of closed network connection") {
-			logger.Infof("gRPC server returned with error: %v", serveErr)
-		} else {
-			logger.Infof("gRPC server is shut down")
-		}
-	}
-	return serveErr
+	return err
 }
