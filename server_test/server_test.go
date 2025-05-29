@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"context"
-	globallog "github.com/seoyhaein/go-grpc-kit/log"
 	"github.com/seoyhaein/go-grpc-kit/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -12,8 +11,6 @@ import (
 	"testing"
 	"time"
 )
-
-var logger = globallog.Log
 
 func TestServerHealth(t *testing.T) {
 	// 테스트용 서버 주소
