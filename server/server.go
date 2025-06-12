@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	globallog "github.com/seoyhaein/go-grpc-kit/log"
@@ -10,6 +12,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -85,6 +88,39 @@ func WithTLS(certFile, keyFile string) grpc.ServerOption {
 	if err != nil {
 		logger.Fatalf("failed to load TLS credentials: %v", err)
 	}
+	return grpc.Creds(creds)
+}
+
+// WithMTLS 는 mTLS용 ServerOption을 반환합니다.
+// - certFile: 서버 인증서 (PEM)
+// - keyFile: 서버 개인키 (PEM)
+// - caFile: 신뢰할 CA 인증서 (PEM)
+func WithMTLS(certFile, keyFile, caFile string) grpc.ServerOption {
+	// 1) 서버 인증서/키 로드
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		log.Fatalf("failed to load server key pair: %v", err)
+	}
+
+	// 2) CA 인증서 로드
+	caPEM, err := os.ReadFile(caFile)
+	if err != nil {
+		log.Fatalf("failed to read CA cert: %v", err)
+	}
+	certPool := x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM(caPEM); !ok {
+		log.Fatalf("failed to append CA cert to pool")
+	}
+
+	// 3) TLS 설정: 클라이언트 인증서 필수 및 검증
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    certPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	creds := credentials.NewTLS(tlsConfig)
 	return grpc.Creds(creds)
 }
 
