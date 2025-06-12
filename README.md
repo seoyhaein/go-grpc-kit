@@ -77,3 +77,45 @@ func (s *dataBlockServiceServerImpl) GetDataBlock(ctx context.Context, in *pb.Ge
 
 
 ```
+
+- devcontainer.json
+
+```
+{
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json",
+    "name": "Go gRPC Dev Container",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "runArgs": [
+        "--cap-add=NET_ADMIN",   // tc(netem) 권한 부여
+        "--network=host"        // 호스트 네트워크 네임스페이스 공유 (선택)
+    ],
+    "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+    "workspaceFolder": "/app",
+    "remoteUser": "vscode",
+
+    // VS Code 내 Go 지원, Docker 지원 확장 자동 설치
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "ms-azuretools.vscode-docker"
+            ],
+            // Go 모듈 자동완성 등 편의 설정
+            "settings": {
+                "go.useLanguageServer": true,
+                "go.toolsManagement.autoUpdate": true
+            }
+        }
+    },
+    // 컨테이너 생성 후 의존성 설치
+    "postCreateCommand": "go mod download",
+
+    // gRPC 기본 포트 포워딩
+    "forwardPorts": [
+        50051
+    ]
+}
+```

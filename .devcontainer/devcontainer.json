@@ -1,0 +1,31 @@
+{
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json",
+    "name": "Go gRPC Dev Container",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "runArgs": [
+        "--cap-add=NET_ADMIN",
+        "--network=host"
+    ],
+    "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+    "workspaceFolder": "/app",
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "ms-azuretools.vscode-docker"
+            ],
+            "settings": {
+                "go.useLanguageServer": true,
+                "go.toolsManagement.autoUpdate": true
+            }
+        }
+    },
+    "postCreateCommand": "go mod download",
+    "forwardPorts": [
+        50051
+    ]
+}
