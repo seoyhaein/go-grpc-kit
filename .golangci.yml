@@ -1,0 +1,174 @@
+# Recommended .golangci.yml for Go gRPC projects.
+# This configuration aims for a good balance of code quality and development efficiency.
+
+linters:
+  # disable-all: true를 사용하면 아래 enable 목록에 있는 린터만 활성화됨.
+  # golangci-lint의 기본 린터들을 대부분 사용하려면 이 라인을 주석 처리하고,
+  # 필요 없는 린터만 disable 목록에 추가하는 것을 고려할 것.
+  enable:
+    # 코드 스타일 및 포맷팅
+    - gofmt       # Go 코드 포맷
+    - goimports   # Go 임포트 정리 (누락된 임포트 추가, 사용되지 않는 임포트 제거)
+    - lll         # 라인 길이 검사
+    - misspell    # 흔히 틀리는 영어 단어 오타 검사
+    - revive      # Golint를 대체하는 Go용 맞춤형 린터
+
+    # 에러 핸들링
+    - errcheck    # 체크되지 않은 에러 검사
+    - errorlint   # Go 프로그램의 에러 핸들링 문제점 검사
+    - noctx       # 컨텍스트가 함수로 전달되는지 검사
+    - bodyclose   # HTTP 응답 바디가 닫혔는지 검사
+
+    # 성능 및 효율성
+    - ineffassign # 쓸모없는 할당 감지
+    - unconvert   # 불필요한 타입 변환 제거
+    - unused      # 사용되지 않는 변수, 함수 등 검사
+    - gosimple    # Go 코드 단순화
+    - staticcheck # 일반적인 정적 분석 검사 (SAxxxx)
+    - unparam     # 사용되지 않는 매개변수 검사
+    - prealloc    # 슬라이스 할당 시 용량 미지정 감지 (성능 향상)
+
+    # 코드 복잡성 및 품질
+    - dupl        # 중복 코드 검사
+    - funlen      # 너무 긴 함수 보고
+    - gocheckcompilerdirectives # 문제 있는 컴파일러 지시어 검사
+    - gochecknoinits  # init 함수 사용 검사
+    - goconst     # 반복되는 문자열 상수로 추출 가능 여부 검사
+    - gocritic   # Go-Critic 린터 (일반적인 실수 검사)
+    - gocyclo     # 순환 복잡도 계산 및 검사
+    - godox       # FIXME, TODO 주석 보고
+    - gosec       # 소스 코드의 보안 문제 검사
+    - govet       # 의심스러운 Go 구문 보고
+    - nakedret    # 이름 있는 반환 매개변수 함수에서 naked return 검사 (가독성 향상)
+    - dogsled     # 너무 많은 빈 할당 검사
+
+    # 특정 Go 기능
+    - copyloopvar # 루프 변수 복사 감지
+    - intrange    # 오버플로 가능성 있는 정수 변환 검사
+    - nolintlint  # nolint 지시어 규칙 적용
+    # - testifylint # testify 라이브러리를 사용하지 않으므로 비활성화됨.
+    # depguard 린터는 제거되어 github.com/sirupsen/logrus 및 pkg/errors 사용에 제한이 없음.
+
+linters-settings:
+  goimports:
+    # 사용자 Go 모듈 경로 설정 (go.mod 파일의 module 경로와 일치해야 함)
+    local-prefixes: github.com/seoyhaein/go-grpc-kit
+  
+  dupl:
+    threshold: 100 # 중복으로 간주할 최소 코드 라인 수
+  
+  funlen:
+    lines: 100       # 함수의 최대 라인 수 (코드 + 빈 줄)
+    statements: 50   # 함수의 최대 문장 수
+  
+  goconst:
+    min-len: 2         # 상수로 추출할 최소 문자열 길이
+    min-occurrences: 3 # 상수로 추출할 최소 반복 횟수
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic     # 진단 관련 검사
+      - experimental   # 실험적 검사 (미래 변경 가능성 있음)
+      - opinionated    # 의견 반영 검사 (팀 스타일에 따라 조절)
+      - performance    # 성능 관련 검사
+      - style          # 코드 스타일 관련 검사
+    disabled-checks:
+      - ifElseChain    # if-else-if 체인 검사 비활성화
+      - octalLiteral   # 8진수 리터럴 검사 비활성화
+      - whyNoLint      # nolint 주석에 대한 설명 요구 안 함
+      - dupImport      # 중복 임포트 검사 (일반적으로 유용하나, 문제 발생 시 비활성화 가능)
+  
+  gocyclo:
+    min-complexity: 20 # 함수의 최소 순환 복잡도. 이 값보다 높으면 경고. (10-15로 낮춰 더 엄격하게 가능)
+  
+  godox:
+    keywords:
+      - FIXME          # FIXME 주석 감지
+      - TODO           # TODO 주석 감지
+  
+  govet:
+    enable:
+      - nilness        # nil 포인터 역참조 가능성 검사
+      - shadow         # 변수 섀도잉 검사
+    settings:
+      printf:
+        # logrus의 Printf 계열 함수들에 대해 형식 문자열 검사 활성화
+        funcs:
+          # logrus.Logger 타입의 Printf 계열 함수들
+          - (github.com/sirupsen/logrus.Logger).Printf
+          - (github.com/sirupsen/logrus.Logger).Infof
+          - (github.com/sirupsen/logrus.Logger).Warnf
+          - (github.com/sirupsen/logrus.Logger).Errorf
+          - (github.com/sirupsen/logrus.Logger).Fatalf
+          - (github.com/sirupsen/logrus.Logger).Debugf
+          - (github.com/sirupsen/logrus.Logger).Tracef
+          # logrus.Entry 타입의 Printf 계열 함수들 (WithField, WithFields 등으로 생성될 때)
+          - (github.com/sirupsen/logrus.Entry).Printf
+          - (github.com/sirupsen/logrus.Entry).Infof
+          - (github.com/sirupsen/logrus.Entry).Warnf
+          - (github.com/sirupsen/logrus.Entry).Errorf
+          - (github.com/sirupsen/logrus.Entry).Fatalf
+          - (github.com/sirupsen/logrus.Entry).Debugf
+          - (github.com/sirupsen/logrus.Entry).Tracef
+  
+  errorlint:
+    asserts: false # error.As 또는 error.Is 사용 시 asserts 검사 비활성화
+  
+  lll:
+    line-length: 120 # 한 줄의 최대 문자 길이
+  
+  misspell:
+    locale: US # 미국 영어 스펠링 체크
+  
+  nolintlint:
+    allow-unused: true       # 사용되지 않는 nolint 지시어 보고
+    require-explanation: false # nolint 지시어에 설명 요구 안 함
+    require-specific: true   # nolint 지시어가 특정 린터를 명시하도록 요구
+  
+  revive:
+    rules:
+      - name: indent-error-flow # 에러 플로우 들여쓰기 검사
+      - name: unexported-return # 내보내지지 않은 타입 반환 검사 (비활성화)
+        disabled: true
+      - name: unused-parameter  # 사용되지 않는 매개변수 검사
+      - name: unused-receiver   # 사용되지 않는 리시버 검사
+
+issues:
+  exclude-rules:
+    # 테스트 파일(.+_test.go)에 대해 특정 린터 검사를 제외함.
+    # 테스트 코드에서 흔히 발생하는 중복 코드, 매직 넘버, 긴 라인, 긴 함수 길이 경고를 무시함.
+    - path: (.+)_test\.go
+      linters:
+        - dupl
+        - mnd
+        - lll
+        - funlen
+
+    # 생성된 Go 파일(.pb.go 등)에 대해 특정 린터 검사를 제외함.
+    # 생성된 코드는 사람이 직접 수정하는 것이 아니므로 린팅 오류를 무시하는 것이 좋음.
+    # 'path' 패턴은 실제 생성되는 파일명에 맞게 조정해야 함.
+    # 예시: '.*\.pb\.go$'는 모든 '.pb.go' 파일에 적용됨.
+    - path: .*\.pb\.go$ 
+      linters:
+        - revive    # 생성된 코드에서 내보내기/내보내지 않기 관련 경고 자주 발생
+        - lll       # 생성된 코드 라인 길이 제약이 엄격하지 않을 수 있음
+        - gosec     # 생성된 코드의 보안 경고는 직접 수정 불가
+        # 이 외에 생성된 코드에서 발생하는 불필요한 린터 경고가 있다면 추가할 것.
+
+  exclude-dirs:
+    # 특정 디렉토리 전체를 린트 검사에서 제외함.
+    # 예: 프로토콜 버퍼로 생성된 코드 파일이 모여있는 디렉토리의 상대 경로를 여기에 추가할 수 있음.
+    # 예시:
+    # - "pkg/api/proto" # proto 파일로부터 생성된 코드가 이 디렉토리에 있다면
+    # - "internal/generated" # 또는 다른 생성된 코드 디렉토리
+    # 주의: 경로는 go.mod가 있는 프로젝트 루트 디렉토리 기준임.
+
+  exclude-files:
+    # 특정 파일을 린트 검사에서 제외함.
+    # 예: 프로젝트 내의 특정 단일 생성 파일이나 외부에서 복사해온 파일을 제외할 때 사용함.
+    # 예시:
+    # - "main.go" # (권장하지 않음, 예시)
+    # - "**/some_specific_generated_file.go" # 와일드카드 패턴 사용 가능
+
+run:
+  timeout: 5m # 린트 실행 최대 시간 (기본 5분)

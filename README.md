@@ -77,6 +77,10 @@ func (s *dataBlockServiceServerImpl) GetDataBlock(ctx context.Context, in *pb.Ge
 
 
 ```
+- config.json 넣어두어야 함.
+
+- grpc 테스트 환경 구축
+- https://chatgpt.com/share/684acb4c-dbc0-800d-b2e5-cdbc02acedfe
 
 - devcontainer.json
 
