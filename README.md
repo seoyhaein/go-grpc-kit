@@ -123,3 +123,6 @@ func (s *dataBlockServiceServerImpl) GetDataBlock(ctx context.Context, in *pb.Ge
     ]
 }
 ```
+
+### 읽어보기
+- https://benggri.tistory.com/137

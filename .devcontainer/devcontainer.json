@@ -1,17 +1,30 @@
 {
-    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json",
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
     "name": "Go gRPC Dev Container",
-    "build": {
-        "dockerfile": "Dockerfile",
-        "context": ".."
-    },
-    "runArgs": [
-        "--cap-add=NET_ADMIN",
-        "--network=host"
-    ],
-    "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
+    "dockerComposeFile": "docker-compose.yml",
+    
+    "service": "app",              
+    "runServices": ["app"],
+    "remoteUser": "vscode",  
+    "updateRemoteUserUID": false,    
+    // JSONC(JSON with Comments) 을 사용해서 주석을 사용할 수 있음.
+    //"build": {
+    //    "dockerfile": "Dockerfile",
+    //    "context": ".."
+    //},
+    //"runArgs": [
+    //    "--cap-add=NET_ADMIN",
+    //    "--network=host"
+    //],
+    
+    //"workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
     "workspaceFolder": "/app",
-    "remoteUser": "vscode",
+    //"remoteUser": "root",
+    //"updateRemoteUserUID": false,
+    // 'remoteUser'와 'updateRemoteUserUID'를 제거하고 'containerUser'를 사용
+    // 'containerUser'는 Docker Compose로 시작되는 컨테이너의 초기 사용자를 지정하는데
+    // 'devcontainers/base' 이미지에는 'vscode' 사용자가 기본으로 존재함.
+    "containerUser": "vscode", // <-- 이 속성을 추가함.
     "customizations": {
         "vscode": {
             "extensions": [
@@ -25,7 +38,10 @@
         }
     },
     "postCreateCommand": "go mod download && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
-    "forwardPorts": [
-        50051
+     "forwardPorts": [
+        50051,  // gRPC 서버
+        9092,   // /metrics (app 서비스)
+        9090,   // Prometheus UI (모니터 프로필)
+        3000    // Grafana UI (모니터 프로필)
     ]
 }

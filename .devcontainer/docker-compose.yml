@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
+    volumes:
+      - ..:/app:cached
+    working_dir: /app
+   # network_mode: host를 사용하면 'ports' 설정은 무시됨.
+    # 포트 포워딩은 devcontainer.json의 'forwardPorts'에서 관리하는 것이 일반적임.
+    # ports:
+    #   - "50051:50051"   # gRPC
+    #   - "9092:9092"     # /metrics
+    # 컨테이너 시작 시 /bin/bash로 진입하면, 내부 프로세스가 없으면 컨테이너가 종료될 수 있음.
+    # 개발 컨테이너를 계속 실행하려면 'sleep infinity'가 더 안정적임.
+    #command: /bin/bash   # 쉘로 진입 후 grpc 서버/테스트 실행
+    user: vscode
+    command: ["tail", "-f", "/dev/null"]
+    init: true
+  # 모니터링 스택은 monitor 프로파일에 묶어서 필요 시 기동
+  prometheus:
+    image: prom/prometheus:latest
+    profiles:
+      - monitor
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"     # Prometheus UI
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=1h"       # 1시간만 보관
+      - "--storage.tsdb.min-block-duration=30m"  # 블록 최소 30분
+    # (참고: deploy.resources 는 swarm 모드에서만 유효) TODO: 컨테이너 리소스 제한 설정 살벼보자.
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles:
+      - monitor
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: devpass
+    ports:
+      - "3000:3000"     # Grafana UI

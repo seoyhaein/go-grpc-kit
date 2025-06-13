@@ -1,0 +1,13 @@
+# .devcontainer/prometheus.yml
+global:
+  scrape_interval: 15s # Prometheus가 메트릭을 수집하는 주기
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090'] # Prometheus 자체 메트릭
+
+  # app 서비스의 메트릭을 수집하려면 나중에 이 job을 추가
+  # - job_name: 'grpc_server'
+  #   static_configs:
+  #     - targets: ['app:9092'] # app 서비스의 9092 포트 (docker compose 내부 네트워크에서 접근)
