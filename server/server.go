@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	globallog "github.com/seoyhaein/go-grpc-kit/log"
+	"github.com/seoyhaein/go-grpc-kit/server/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -16,7 +17,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 )
 
@@ -29,12 +29,6 @@ func init() {
 type RegisterServices func(*grpc.Server)
 
 // 기본값 상수들
-const (
-	defaultMaxRequestBytes          = 4 << 20 // 예: 4MiB
-	defaultGrpcOverheadBytes        = 1 << 20 // 예: 1MiB
-	defaultMaxSendBytes             = 4 << 20
-	defaultMaxStreams        uint32 = 100
-)
 
 // options 은 functional 옵션을 누적할 구조체
 type options struct {
@@ -61,24 +55,23 @@ func WithStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) Option
 
 // DefaultServerOptions 는 functional 옵션들을 받아 grpc.ServerOption 리스트 반환
 func DefaultServerOptions(opts ...Option) []grpc.ServerOption {
-	cfg := &options{
+	cfg := config.LoadServerConfig()
+
+	// 기본 interceptor 설정
+	base := &options{
 		unaryInterceptors:  []grpc.UnaryServerInterceptor{loggingInterceptor},
 		streamInterceptors: []grpc.StreamServerInterceptor{streamLoggingInterceptor},
 	}
 	for _, opt := range opts {
-		opt(cfg)
+		opt(base)
 	}
 
-	maxRecv := getEnvInt("GRPC_MAX_RECV_MSG_SIZE", int(defaultMaxRequestBytes))
-	maxSend := getEnvInt("GRPC_MAX_SEND_MSG_SIZE", defaultMaxSendBytes)
-	maxStreams := getEnvInt("GRPC_MAX_CONCURRENT_STREAMS", int(defaultMaxStreams))
-
 	return []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(cfg.unaryInterceptors...),
-		grpc.ChainStreamInterceptor(cfg.streamInterceptors...),
-		grpc.MaxRecvMsgSize(maxRecv),
-		grpc.MaxSendMsgSize(maxSend),
-		grpc.MaxConcurrentStreams(uint32(maxStreams)),
+		grpc.ChainUnaryInterceptor(base.unaryInterceptors...),
+		grpc.ChainStreamInterceptor(base.streamInterceptors...),
+		grpc.MaxRecvMsgSize(cfg.MaxRecvMsgSize),
+		grpc.MaxSendMsgSize(cfg.MaxSendMsgSize),
+		grpc.MaxConcurrentStreams(cfg.MaxConcurrentStreams),
 	}
 }
 
@@ -144,12 +137,10 @@ func WithReflection() RegisterServices {
 func Server(address string, opts []grpc.ServerOption, registerServices ...RegisterServices) error {
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
-
 		return fmt.Errorf("failed to listen on %s: %w", address, err)
 	}
 	// ServerOption 설정
 	grpcServer := grpc.NewServer(opts...)
-
 	// RegisterServices 를 순회하며 각 서비스 등록
 	for _, registerServiceServer := range registerServices {
 		registerServiceServer(grpcServer)
@@ -169,20 +160,6 @@ func Server(address string, opts []grpc.ServerOption, registerServices ...Regist
 		return serveErr
 	}
 	return nil
-}
-
-// 값이 없거나 잘못된 경우 defaultVal 을 반환
-func getEnvInt(key string, defaultVal int) int {
-	s := os.Getenv(key)
-	if s == "" {
-		return defaultVal
-	}
-	val, err := strconv.Atoi(s)
-	if err != nil {
-		logger.Warnf("Invalid value for %s: %v. Using default: %d", key, err, defaultVal)
-		return defaultVal
-	}
-	return val
 }
 
 // gRPC 요청을 받을 때마다 요청 메서드와 에러 정보를 로깅함
