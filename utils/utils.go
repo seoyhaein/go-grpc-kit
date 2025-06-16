@@ -11,7 +11,7 @@ import (
 )
 
 // GenerateSelfSignedCA returns a CA cert+key for signing.
-// validFor: 인증서 유효기간
+// validFor: Certificate validity period
 func GenerateSelfSignedCA(validFor time.Duration) (*x509.Certificate, *rsa.PrivateKey, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -57,6 +57,59 @@ func GenerateCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, host string, 
 		return tls.Certificate{}, err
 	}
 	// PEM 인코딩 없이 바로 tls.Certificate 생성
+	cert := tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+		Leaf:        tmpl,
+	}
+	return cert, nil
+}
+
+// GenerateServerCert signed by the given CA, for host (e.g. "localhost")
+func GenerateServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, host string, validFor time.Duration) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: host},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(validFor),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, // ⭐ 서버 인증용
+		DNSNames:     []string{host},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &key.PublicKey, caKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	cert := tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+		Leaf:        tmpl,
+	}
+	return cert, nil
+}
+
+// GenerateClientCert signed by the given CA.
+func GenerateClientCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, clientName string, validFor time.Duration) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: clientName},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(validFor),
+		KeyUsage:     x509.KeyUsageDigitalSignature,                  // 클라이언트 인증서에 필요한 최소 KeyUsage
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, // ⭐ 오직 클라이언트 인증용
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &key.PublicKey, caKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
 	cert := tls.Certificate{
 		Certificate: [][]byte{der},
 		PrivateKey:  key,
