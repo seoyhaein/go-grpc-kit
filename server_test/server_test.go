@@ -89,15 +89,16 @@ type healthServerImpl struct{}
 func (s *healthServerImpl) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
+
 func (s *healthServerImpl) Watch(req *grpc_health_v1.HealthCheckRequest, stream grpc_health_v1.Health_WatchServer) error {
 	return status.Errorf(codes.Unimplemented, "Watch not implemented")
 }
 
 func TestServerHealth_MTLS(t *testing.T) {
 	// 1) Start the mTLS gRPC server
-	errCh, caCert, caKey, address := startMTLSServer(t)
+	srv, caCert, caKey, address, errCh := startMTLSServer(t)
 
-	// 2) Make sure it didn’t exit immediately
+	// 2) Ensure server started without immediate error
 	select {
 	case serveErr := <-errCh:
 		t.Fatalf("server start failed: %v", serveErr)
@@ -122,11 +123,11 @@ func TestServerHealth_MTLS(t *testing.T) {
 	rootCAs := x509.NewCertPool()
 	rootCAs.AddCert(caCert)
 	tlsCfg := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
+		Certificates: []tls.Certificate{*clientCert},
 		RootCAs:      rootCAs,
-		ServerName:   "localhost", // must match DNSNames in server cert
+		ServerName:   "localhost",
 		MinVersion:   tls.VersionTLS12,
-		NextProtos:   []string{"h2"}, // ALPN → HTTP/2
+		NextProtos:   []string{"h2"},
 	}
 
 	// 6) Plain TLS handshake + ALPN check
@@ -166,28 +167,22 @@ func TestServerHealth_MTLS(t *testing.T) {
 	}
 	t.Logf("✅ Health.Check RPC succeeded, status=%v", resp.Status)
 
-	// 9) Shutdown the server
-	p, err := os.FindProcess(os.Getpid())
-	if err != nil {
-		t.Fatalf("FindProcess failed: %v", err)
-	}
-	if err := p.Signal(syscall.SIGINT); err != nil {
-		t.Fatalf("Failed to send SIGINT: %v", err)
-	}
+	// 9) Shutdown the server gracefully
+	srv.GracefulStop()
 
 	// 10) Wait for server to exit
-	if serveErr := <-errCh; serveErr != nil {
+	if serveErr := <-errCh; serveErr != nil && serveErr != grpc.ErrServerStopped {
 		t.Errorf("server shutdown error: %v", serveErr)
 	} else {
 		t.Log("✅ Server shut down gracefully")
 	}
 }
 
-// TODO 분석후 최적화 시켜야함.
-func startMTLSServer(t *testing.T) (<-chan error, *x509.Certificate, *rsa.PrivateKey, string) {
+// startMTLSServer starts a gRPC server with mTLS and returns the server, CA credentials, address, and serve error channel.
+func startMTLSServer(t *testing.T) (*grpc.Server, *x509.Certificate, *rsa.PrivateKey, string, <-chan error) {
 	t.Helper()
 
-	// Generate CA and server certificates (DNSNames includes "localhost")
+	// Generate CA and server certificates
 	caCert, caKey, err := utils.GenerateSelfSignedCA(1 * time.Hour)
 	if err != nil {
 		t.Fatalf("CA generation failed: %v", err)
@@ -197,8 +192,8 @@ func startMTLSServer(t *testing.T) (<-chan error, *x509.Certificate, *rsa.Privat
 		t.Fatalf("Server cert generation failed: %v", err)
 	}
 
-	// Use NewServerTLSFromCert to get proper TLS+HTTP2 creds
-	servCreds := credentials.NewServerTLSFromCert(&serverCert)
+	// Create server TLS credentials
+	servCreds := credentials.NewServerTLSFromCert(serverCert)
 
 	// Listen on a free loopback port
 	lis, err := net.Listen("tcp", "localhost:0")
@@ -206,7 +201,7 @@ func startMTLSServer(t *testing.T) (<-chan error, *x509.Certificate, *rsa.Privat
 		t.Fatalf("net.Listen failed: %v", err)
 	}
 
-	// Create gRPC server with mTLS
+	// Create and start gRPC server
 	grpcSrv := grpc.NewServer(grpc.Creds(servCreds))
 	grpc_health_v1.RegisterHealthServer(grpcSrv, &healthServerImpl{})
 	reflection.Register(grpcSrv)
@@ -216,5 +211,5 @@ func startMTLSServer(t *testing.T) (<-chan error, *x509.Certificate, *rsa.Privat
 		errCh <- grpcSrv.Serve(lis)
 	}()
 
-	return errCh, caCert, caKey, lis.Addr().String()
+	return grpcSrv, caCert, caKey, lis.Addr().String(), errCh
 }
