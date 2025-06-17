@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+// TODO 유틸을 확장해주고, mtls 관련해서 좀더 고도화 해주자.
+
 // GenerateSelfSignedCA returns a CA cert+key for signing.
 // validFor: Certificate validity period
 func GenerateSelfSignedCA(validFor time.Duration) (*x509.Certificate, *rsa.PrivateKey, error) {
