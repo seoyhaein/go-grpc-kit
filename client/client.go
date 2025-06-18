@@ -30,6 +30,7 @@ func WithInsecure() Option {
 
 // WithTLS configures the client to use TLS with the given CA certificate
 // certFile is ignored (client auth not used)
+// TODO panic 지우는 것 생각해보자.
 func WithTLS(caFile string) Option {
 	return func(o *dialOptions) {
 		// Load CA cert
