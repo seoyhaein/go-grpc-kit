@@ -128,3 +128,7 @@ func (s *dataBlockServiceServerImpl) GetDataBlock(ctx context.Context, in *pb.Ge
 - https://benggri.tistory.com/137
 - https://containers.dev/implementors/json_reference/#compose-specific
 - https://github.com/grpc/grpc-go/tree/master/examples
+
+### 반드시 처리하자.
+- server_config 따로 뺐는데 config 따로할지 통합할지 고민해야 함. peernode 에서 필요한 config 도 있음. 연결할 서버 목롤을 코드에 넣을 수는 없음.
+- dev container 관련 코드도 분석해야 함. client_test.go 소스 수정해야 함.
