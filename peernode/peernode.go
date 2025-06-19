@@ -47,6 +47,22 @@ func (n *PeerNode) ServerStart() error {
 	return nil
 }
 
+// ServerStartAsync 비동기로 gRPC 서버를 띄우고 *grpc.Server를 리턴합니다.
+// 서비스 등록이 없으면 에러를 반환합니다.
+func (n *PeerNode) ServerStartAsync() (*grpc.Server, error) {
+	if len(n.registerServices) == 0 {
+		return nil, fmt.Errorf("no services registered for PeerNode %s", n.Name)
+	}
+
+	grpcServer, err := server.ServerAsync(n.Address, n.ServerOptions, n.registerServices...)
+	if err != nil {
+		return nil, fmt.Errorf("PeerNode[%s] async start failed: %w", n.Name, err)
+	}
+
+	logger.Printf("PeerNode[%s] async gRPC server started at %s", n.Name, n.Address)
+	return grpcServer, nil
+}
+
 // ConnectClients establishes connections to all configured peers.
 func (n *PeerNode) ConnectClients(ctx context.Context) []*grpc.ClientConn {
 	cons := make([]*grpc.ClientConn, 0, len(n.Peers))
