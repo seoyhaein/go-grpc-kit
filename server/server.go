@@ -16,8 +16,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
 )
 
 var logger = globallog.Log
@@ -125,7 +123,7 @@ func Server(address string, opts []grpc.ServerOption, registerServices ...Regist
 	for _, registerServiceServer := range registerServices {
 		registerServiceServer(grpcServer)
 	}
-	// graceful shutdown 처리 추가
+	/*// graceful shutdown 처리 추가
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -133,13 +131,33 @@ func Server(address string, opts []grpc.ServerOption, registerServices ...Regist
 		logger.Infof("Received signal: %v. Initiating graceful shutdown...", sig)
 		// GracefulStop 은 현재 처리 중인 요청을 모두 완료한 후 서버를 중지함
 		grpcServer.GracefulStop()
-	}()
+	}()*/
 	// 서버 시작
 	serveErr := grpcServer.Serve(lis)
 	if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
 		return serveErr
 	}
 	return nil
+}
+
+func ServerAsync(address string, opts []grpc.ServerOption, registerServices ...RegisterServices) (*grpc.Server, error) {
+	lis, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on %s: %w", address, err)
+	}
+	// ServerOption 설정
+	grpcServer := grpc.NewServer(opts...)
+	// RegisterServices 를 순회하며 각 서비스 등록
+	for _, registerServiceServer := range registerServices {
+		registerServiceServer(grpcServer)
+	}
+	// 비동기로 Serve
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			logger.Errorf("serve error: %v", err)
+		}
+	}()
+	return grpcServer, nil
 }
 
 // gRPC 요청을 받을 때마다 요청 메서드와 에러 정보를 로깅함
