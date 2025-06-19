@@ -48,15 +48,15 @@ func (n *PeerNode) Start() error {
 }
 
 // ConnectAll establishes connections to all configured peers.
-func (n *PeerNode) ConnectAll(ctx context.Context) []grpc.ClientConn {
-	conns := make([]grpc.ClientConn, 0, len(n.Peers))
+func (n *PeerNode) ConnectAll(ctx context.Context) []*grpc.ClientConn {
+	cons := make([]*grpc.ClientConn, 0, len(n.Peers))
 	for _, target := range n.Peers {
-		conn, err := client.Dial(ctx, target, n.ClientOptions...)
+		con, err := client.Dial(ctx, target, n.ClientOptions...)
 		if err != nil {
 			log.Printf("[%s] Dial to %s failed: %v", n.Name, target, err)
 			continue
 		}
-		conns = append(conns, *conn)
+		cons = append(cons, con)
 	}
-	return conns
+	return cons
 }
