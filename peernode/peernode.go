@@ -34,7 +34,7 @@ func NewPeerNode(name, addr string, peers []string, serverOpts []grpc.ServerOpti
 	}
 }
 
-func (n *PeerNode) Start() error {
+func (n *PeerNode) ServerStart() error {
 	if len(n.registerServices) == 0 {
 		return fmt.Errorf("no services registered for PeerNode %s", n.Name)
 	}
@@ -47,8 +47,8 @@ func (n *PeerNode) Start() error {
 	return nil
 }
 
-// ConnectAll establishes connections to all configured peers.
-func (n *PeerNode) ConnectAll(ctx context.Context) []*grpc.ClientConn {
+// ConnectClients establishes connections to all configured peers.
+func (n *PeerNode) ConnectClients(ctx context.Context) []*grpc.ClientConn {
 	cons := make([]*grpc.ClientConn, 0, len(n.Peers))
 	for _, target := range n.Peers {
 		con, err := client.Dial(ctx, target, n.ClientOptions...)
