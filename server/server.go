@@ -30,49 +30,29 @@ type RegisterServices func(*grpc.Server)
 
 // 기본값 상수들
 
-// options 은 functional 옵션을 누적할 구조체
-type options struct {
-	unaryInterceptors  []grpc.UnaryServerInterceptor
-	streamInterceptors []grpc.StreamServerInterceptor
-}
-
-// Option 은 DefaultServerOptions 에 전달할 수 있는 functional 옵션 타입
-type Option func(*options)
-
 // WithUnaryInterceptors 는 추가 Unary 인터셉터를 등록
-func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) Option {
-	return func(o *options) {
-		o.unaryInterceptors = append(o.unaryInterceptors, interceptors...)
-	}
+func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) grpc.ServerOption {
+	return grpc.ChainUnaryInterceptor(interceptors...)
 }
 
 // WithStreamInterceptors 는 추가 Stream 인터셉터를 등록
-func WithStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) Option {
-	return func(o *options) {
-		o.streamInterceptors = append(o.streamInterceptors, interceptors...)
-	}
+func WithStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) grpc.ServerOption {
+	return grpc.ChainStreamInterceptor(interceptors...)
 }
 
 // DefaultServerOptions 는 functional 옵션들을 받아 grpc.ServerOption 리스트 반환
-func DefaultServerOptions(opts ...Option) []grpc.ServerOption {
+func DefaultServerOptions(opts ...grpc.ServerOption) []grpc.ServerOption {
 	cfg := config.LoadServerConfig()
 
 	// 기본 interceptor 설정
-	base := &options{
-		unaryInterceptors:  []grpc.UnaryServerInterceptor{loggingInterceptor},
-		streamInterceptors: []grpc.StreamServerInterceptor{streamLoggingInterceptor},
-	}
-	for _, opt := range opts {
-		opt(base)
-	}
-
-	return []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(base.unaryInterceptors...),
-		grpc.ChainStreamInterceptor(base.streamInterceptors...),
+	base := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(loggingInterceptor),
+		grpc.ChainStreamInterceptor(streamLoggingInterceptor),
 		grpc.MaxRecvMsgSize(cfg.MaxRecvMsgSize),
 		grpc.MaxSendMsgSize(cfg.MaxSendMsgSize),
 		grpc.MaxConcurrentStreams(cfg.MaxConcurrentStreams),
 	}
+	return append(base, opts...)
 }
 
 // WithTLS 는 TLS 인증서를 grpc 서버에 적용할 수 있는 ServerOption 반환
