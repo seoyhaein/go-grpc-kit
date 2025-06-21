@@ -47,8 +47,7 @@ func (n *PeerNode) ServerStart() error {
 	return nil
 }
 
-// ServerStartAsync 비동기로 gRPC 서버를 띄우고 *grpc.Server를 리턴합니다.
-// 서비스 등록이 없으면 에러를 반환합니다.
+// ServerStartAsync 비동기로 gRPC 서버를 띄우고 *grpc.Server 리턴
 func (n *PeerNode) ServerStartAsync() (*grpc.Server, error) {
 	if len(n.registerServices) == 0 {
 		return nil, fmt.Errorf("no services registered for PeerNode %s", n.Name)
